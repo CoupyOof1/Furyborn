@@ -44,6 +44,15 @@ class Playable():
         self.last_e_press_time = 0
         self.double_tap_threshold = 250
 
+        # Player Combo Cool Down 
+        self.combo_count = 0
+        self.combo_start_time = 0
+        self.combo_max_hits = 3
+        self.combo_timeout = 800         # Time allowed between presses (ms)
+        self.combo_cooldown_time = 1500  # Long cooldown after full combo (ms)
+        self.combo_blocked_until = 0     # Time when E can be used again
+
+
     def drawing_healthbar(self, screen, amount, x, y, colour, pos_y, pos_x):
         ratio = amount / 500
         x_offset = x - pos_x # determines the position of the healthbar 
@@ -122,17 +131,17 @@ class Playable():
                 else:
                     self.attack_type = 1
                 self.last_e_press_time = current_time
-                self.attack(surface, target)
-            if key[pygame.K_r]:
-                #self.attack_type = 3
-                self.attack(surface, target)
-                #self.stabattack(surface, target) #
+                self.attack(surface, target)#'''
+                
             if key[pygame.K_f] and self.stamina > 0:
                 self.defending = True
                 self.stamina = max(self.stamina - self.cost_stamina, 0)
                 #print("is defending")
             else:
                 self.stamina = min(self.stamina + self.recovery_stamina, self.max_stamina)
+
+            if self.defending == True:
+                self.defend(surface, target)
 
         #apply the gravity
         # Apply gravity, but slow descent if attacking mid-air
@@ -168,6 +177,93 @@ class Playable():
         self.rect.x += dx
         self.rect.y += dy
     #endregion
+
+    #region Animation Updates 
+    #handle animation updates
+    def updates(self):
+        #chcking player action type
+        if self.health <= 0:
+            self.health = 0 
+            self.alive = False
+            self.update_action(5) # death 
+        elif self.hit == True:
+            self.update_action(4) # getting hit
+        elif self.defending == True:
+            self.update_action(8) #is defending 
+        elif self.attacking == True:
+            #self.update_action(6) # attacking #1 '''
+            if self.attack_type == 1:
+                self.update_action(1) # attacking #1
+            elif self.attack_type == 2:
+                self.update_action(6) # attacking #2
+            elif self.attack_type == 3:
+                self.update_action(7) # attacking #2
+        elif self.jump == True:
+            self.update_action(3) # jumping
+        elif self.running == True:
+            self.update_action(2) # running
+        else:
+            self.update_action(0) # idle
+
+        animation_cooldown = 100 # miliseconds 
+        #updating the entity image
+        '''self.image = self.animation_list[self.action][self.frame_index]
+        #check if enough time has passed since the ;ast update
+        if pygame.time.get_ticks() - self.update_time > animation_cooldown:
+            self.frame_index += 1
+            self.update_time = pygame.time.get_ticks()
+        #checking once the animation is finished
+        if self.frame_index >= len(self.animation_list[self.action]):
+            #check if the fighter is dead then end the animation 
+            if self.alive == False:
+                self.frame_index = len(self.animation_list[self.action]) - 1
+            else: 
+                self.frame_index = 0 # go back to the begining
+            #if fighter is defending
+            if self.action == 8: #or self.stamina == 0: 
+                self.defending = False
+            #if attack was made 
+            if self.action == 1: #or self.action == 4 
+                self.attacking = False
+                self.attack_cooldown = 8 # prevent constant spam
+            if self.action == 6: 
+                self.attacking = False
+                self.attack_cooldown = 8 # prevent constant spam
+            if self.action == 7: 
+                self.attacking = False
+                self.attack_cooldown = 8 # prevent constant spam
+            #checking if damage was recieved
+            if self.action == 4:
+                self.hit = False
+                #if both fighters attack each other at the same time
+                self.attacking = False
+                self.attack_cooldown = 15#'''
+        #check if the fighter is dead then end the animation 
+        if self.alive == False:
+            #self.frame_index = len(self.animation_list[self.action]) - 1
+            pass 
+        else: 
+            self.frame_index = 0 # go back to the begining
+        #if fighter is defending
+        if self.action == 8: #or self.stamina == 0: 
+            self.defending = False
+        #if attack was made 
+        if self.action == 1: #or self.action == 4 
+            self.attacking = False
+            self.attack_cooldown = 8 # prevent constant spam
+        if self.action == 6: 
+            self.attacking = False
+            self.attack_cooldown = 8 # prevent constant spam
+        if self.action == 7: 
+            self.attacking = False
+            self.attack_cooldown = 8 # prevent constant spam
+        #checking if damage was recieved
+        if self.action == 4:
+            self.hit = False
+            #if both fighters attack each other at the same time
+            self.attacking = False
+            self.attack_cooldown = 15
+    #endregion 
 
     #region Attack Function 
     def attack(self, surface, target):
@@ -208,3 +304,21 @@ class Playable():
                 
             pygame.draw.rect(surface, (0, 255, 0), attacking_rect)
     #endregion 
+
+    #region Defending Function 
+    def defend(self, surface, target):
+        defending_rect = pygame.Rect(self.rect.centerx - (2 * self.rect.width * self.flip), self.rect.y, 2 * self.rect.width, self.rect.height)
+        pygame.draw.rect(surface, (0, 0, 255), defending_rect)
+    #endregion 
+
+    #region update actions 
+    def update_action(self, new_action):
+        #checking if the new action is different 
+        if new_action != self.action:
+            self.action = new_action
+            #updating the animation settings
+            self.frame_index = 0 
+            self.update_time = pygame.time.get_ticks()
+    #endregion
+
+

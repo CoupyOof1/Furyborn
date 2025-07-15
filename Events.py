@@ -49,6 +49,7 @@ def drawing_fight():
     PLAYER.move(WIDTH, HEIGHT, 50, screen, ENEMY)
     for Entities in [PLAYER, ENEMY]:
         Entities.drawsprite(screen)
+        Entities.updates()
 #endregion 
 
 def handle_events():
