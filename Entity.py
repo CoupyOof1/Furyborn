@@ -43,6 +43,7 @@ class Playable():
         self.timer_dash = 0
         self.last_e_press_time = 0
         self.double_tap_threshold = 250
+        self.action_cooldown = 0        # A cooldown for whenether an entity/character is hit to add a delay in input 
 
         # Player Combo Cool Down 
         self.combo_count = 0
@@ -51,6 +52,10 @@ class Playable():
         self.combo_timeout = 800         # Time allowed between presses (ms)
         self.combo_cooldown_time = 1500  # Long cooldown after full combo (ms)
         self.combo_blocked_until = 0     # Time when E can be used again
+
+        # Player Blocking object 
+        self.defending_rect = pygame.Rect(0, 0, 0, 0)   # Actual Object for the blocking mechanic 
+
 
 
     def drawing_healthbar(self, screen, amount, x, y, colour, pos_y, pos_x):
@@ -63,6 +68,63 @@ class Playable():
     def drawsprite(self, surface):
         pygame.draw.rect(surface, (255,0,0), self.rect)
         self.drawing_healthbar(surface, self.health, self.rect.x, self.rect.y, (0, 255, 0), 34, 25)  # Red bar
+
+    #region AI TEST
+    def AI_TEST(self, screen_width, screen_height, pixel_ground, surface, target):
+        current_time = pygame.time.get_ticks()
+        
+        #speed of the player and entity
+        SPEED = 10
+        GRAVITY = 2
+        DASH_SPEED = 25
+        DASH_DURATION = 300
+        DASH_COOLDOWN_TIME = 1000
+
+        #coordinate variables determine position
+        dx = 0 #left/right
+        dy = 0 #up/down
+
+        #performing other actions when not attacking/being hit/ or when action is not above 0 
+        if self.attacking == False and self.hit == False and self.action_cooldown == 0:
+            # Test: Defending 
+            self.defend(surface, target)
+
+        # Apply Knockback
+        if self.knockback != 0:
+            dx += self.knockback
+            self.knockback *= 0.8  # Reduce knockback effect over time
+            if abs(self.knockback) < 1:
+                self.knockback = 0  # Stop knockback when it's too small
+
+        # Apply gravity, but slow descent if attacking mid-air
+        if self.attacking == True and self.jump == True:
+            self.vel_y += GRAVITY * 0.06  # Reduce fall speed while attacking
+            self.vel_y = max(self.vel_y, -5)  # Apply a small upward push to stall
+        else:
+            self.vel_y += GRAVITY  # Normal gravity when not attacking
+        dy += self.vel_y
+
+        # Ensuring fighters stay on screen
+        if self.rect.left + dx < 0: #left border
+            dx = -self.rect.left
+        if self.rect.right + dx > screen_width: #right border
+            dx = screen_width - self.rect.right
+        if self.rect.bottom + dy > screen_height - pixel_ground:
+            self.vel_y = 0
+            self.jump = False
+            dy = screen_height - pixel_ground - self.rect.bottom
+
+        # Reducing the action points if it > 0 
+        if self.action_cooldown != 0:
+            self.action_cooldown -= 1
+            print(target.action_cooldown)
+        else: 
+            self.action_cooldown = 0 
+
+        #update the fighter's position 
+        self.rect.x += dx
+        self.rect.y += dy
+    #endregion 
 
     #region player controls 
     def move(self, screen_width, screen_height, pixel_ground, surface, target):
@@ -265,50 +327,68 @@ class Playable():
             self.attack_cooldown = 15
     #endregion 
 
+    #region Knockback Function
+    def knockback_function(self, force, target):
+        # This function will serve as a recallable feature to knock player/entity away froma certain distance 
+        
+        # Applying Knockback
+        KNOCKBACK_FORCE = force  # Adjust strength of knockback
+        if self.flip:  
+            target.knockback = -KNOCKBACK_FORCE  # Knockback left
+        else:
+            target.knockback = KNOCKBACK_FORCE   # Knockback right
+    #endregion 
+
     #region Attack Function 
     def attack(self, surface, target):
         if self.attack_cooldown == 0:
             self.attacking = True
             attacking_rect = pygame.Rect(self.rect.centerx - (2 * self.rect.width * self.flip), self.rect.y, 2 * self.rect.width, self.rect.height)
-            if attacking_rect.colliderect(target.rect):
-                #print("Hit")
-
+            
+            # Checks for the attack block is hitting the defence block zone 
+            if attacking_rect.colliderect(target.defending_rect):
+                print("Attack has been blocked")
+                self.knockback_function(5, target)
+            
+            # If not hotting the defence block but hitting the target
+            elif attacking_rect.colliderect(target.rect):
                 if target.invincible:
                     return
 
+                # if target is not defending 
                 if target.defending == False:
-                    target.health -= 20
-                    target.hit = True
-                    target.stun_timer = pygame.time.get_ticks() + 500
+                    target.health -= 20                                 # Subtracts 20 health
+                    target.hit = True                                   # turns on the state of being hit 
+                    target.stun_timer = pygame.time.get_ticks() + 500   # adds value to stun 
+                    target.action_cooldown = 45                         # adds value to action cooldown to prevent opponents from instant action 
+
+                    # Apply Knockback
+                    self.knockback_function(2, target)
                 else:
                     target.health -= 2
                     target.stamina -= 34
 
                     # Apply Knockback
-                    KNOCKBACK_FORCE = 5  # Adjust strength of knockback
-                    if self.flip:  
-                        target.knockback = -KNOCKBACK_FORCE  # Knockback left
-                    else:
-                        target.knockback = KNOCKBACK_FORCE   # Knockback right
+                    self.knockback_function(5, target)
 
                 # Check for simultaneous hit
                 if target.attacking:
-                    KNOCKBACK_FORCE = 40
                     self.hit = True
-                    if target.flip:  
-                        self.knockback = -KNOCKBACK_FORCE  # Knockback left
-                        target.knockback = KNOCKBACK_FORCE  # Knockback right
-                    else:
-                        self.knockback = KNOCKBACK_FORCE   # Knockback right
-                        target.knockback = -KNOCKBACK_FORCE  # Knockback left
+                    self.knockback_function(40, target)
                 
             pygame.draw.rect(surface, (0, 255, 0), attacking_rect)
     #endregion 
 
     #region Defending Function 
     def defend(self, surface, target):
-        defending_rect = pygame.Rect(self.rect.centerx - (2 * self.rect.width * self.flip), self.rect.y, 2 * self.rect.width, self.rect.height)
-        pygame.draw.rect(surface, (0, 0, 255), defending_rect)
+        self.defending_rect = pygame.Rect(
+            self.rect.centerx - (2.2 * self.rect.width * self.flip), # X-Position 
+            self.rect.y,                                             # Y-Position 
+            1.65 * self.rect.width,                                  # Width 
+            self.rect.height                                         # Height 
+            )
+        
+        pygame.draw.rect(surface, (0, 0, 255), self.defending_rect)
     #endregion 
 
     #region update actions 

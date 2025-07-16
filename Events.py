@@ -47,6 +47,7 @@ def drawing_fight():
         button.changeColor(pygame.mouse.get_pos())
 
     PLAYER.move(WIDTH, HEIGHT, 50, screen, ENEMY)
+    ENEMY.AI_TEST(WIDTH, HEIGHT, 50, screen, PLAYER)
     for Entities in [PLAYER, ENEMY]:
         Entities.drawsprite(screen)
         Entities.updates()

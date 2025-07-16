@@ -12,7 +12,7 @@ clock = pygame.time.Clock()
 FPS = 60 
 
 # Change for each update made for clear indication 
-UPDATE_LOG = ' 0.0.2'
+UPDATE_LOG = ' 0.0.3'
 
 OB_EVENTS = "SCR_MENU" # An variable holding the game current events
 
