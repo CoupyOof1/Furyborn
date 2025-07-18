@@ -35,6 +35,7 @@ class Playable():
         self.cost_stamina = 8
         self.recovery_stamina = 4
         self.attack_cooldown = 0
+        self.stamina_cooldown = 500
 
         # Player cool down 
         self.attack_type = 0
@@ -53,13 +54,18 @@ class Playable():
         self.combo_cooldown_time = 1500  # Long cooldown after full combo (ms)
         self.combo_blocked_until = 0     # Time when E can be used again
 
+        # Player crouch state + variables 
+        self.crouching = False                  # Making a state for animation to play
+        self.original_height = self.rect.height # Storing the original value for the height 
+        self.crouching_height = 45              # Adding new value to change the hitbox to half it height 
+
         # Player Blocking object 
         self.defending_rect = pygame.Rect(0, 0, 0, 0)   # Actual Object for the blocking mechanic 
 
 
 
-    def drawing_healthbar(self, screen, amount, x, y, colour, pos_y, pos_x):
-        ratio = amount / 500
+    def drawing_healthbar(self, screen, amount, max_amount, x, y, colour, pos_y, pos_x):
+        ratio = amount / max_amount
         x_offset = x - pos_x # determines the position of the healthbar 
         pygame.draw.rect(screen, (255, 255, 255), (x_offset - 2, y - (pos_y + 2), 104, 21))  # border
         pygame.draw.rect(screen, (255, 0, 0), (x_offset, y - pos_y, 100, 17))            # background
@@ -67,7 +73,8 @@ class Playable():
 
     def drawsprite(self, surface):
         pygame.draw.rect(surface, (255,0,0), self.rect)
-        self.drawing_healthbar(surface, self.health, self.rect.x, self.rect.y, (0, 255, 0), 34, 25)  # Red bar
+        self.drawing_healthbar(surface, self.health, 500, self.rect.x, self.rect.y, (0, 255, 0), 44, 25)  # Red bar
+        self.drawing_healthbar(surface, self.stamina, self.max_stamina, self.rect.x, self.rect.y, (0, 0, 255), 28, 25)  # Blue bar
 
     #region AI TEST
     def AI_TEST(self, screen_width, screen_height, pixel_ground, surface, target):
@@ -117,7 +124,6 @@ class Playable():
         # Reducing the action points if it > 0 
         if self.action_cooldown != 0:
             self.action_cooldown -= 1
-            print(target.action_cooldown)
         else: 
             self.action_cooldown = 0 
 
@@ -170,37 +176,49 @@ class Playable():
             self.cooldown_dash = current_time + DASH_COOLDOWN_TIME  # Set cooldown
             return  # Stop other movements while dashing starts
 
-        #performing other actions when not attacking 
+        # performing other actions when not attacking 
         if self.attacking == False and self.defending == False:
-            #movements of fighter
+            # movements
             if key[pygame.K_a]: #moved left
                 self.flip = True
                 dx = -SPEED
                 self.running = True
-            if key[pygame.K_d]: #moved right
+            elif key[pygame.K_d]: #moved right
                 self.flip = False
                 dx = SPEED
                 self.running = True
-            #jumping of Fighter
+            # jumping
             if key[pygame.K_w] and self.jump == False: #jumping up
                 self.vel_y = -30
                 self.jump = True
+            # crouching 
+            elif key[pygame.K_s] and not self.jump:
+                if not self.crouching: 
+                    self.rect.height = self.crouching_height
+                    self.rect.y += self.original_height - self.crouching_height # Adjusting hitbox to go down 
+                    self.crouching = True                                       # Turns the bool true for animation to play 
+            else: 
+                if self.crouching:
+                    self.rect.y -= self.original_height - self.crouching_height # Moving the hitbox back up 
+                    self.rect.height = self.original_height
+                    self.crouching = False                                      # Turning the bool off to stop animation                     
+            
+            if pygame.mouse.get_pressed()[2]: 
+                self.attack_heavy(surface, target)
             #attacks of fighter
-            if key[pygame.K_e]:
+            elif pygame.mouse.get_pressed()[0]:
                 if current_time - self.last_e_press_time <= self.double_tap_threshold:
-                    #Detecting double tap E
                     self.attack_type = 2
                 else:
                     self.attack_type = 1
                 self.last_e_press_time = current_time
                 self.attack(surface, target)#'''
-                
-            if key[pygame.K_f] and self.stamina > 0:
+            elif key[pygame.K_f] and self.stamina > 0:
                 self.defending = True
                 self.stamina = max(self.stamina - self.cost_stamina, 0)
                 #print("is defending")
             else:
-                self.stamina = min(self.stamina + self.recovery_stamina, self.max_stamina)
+                self.stamina = min(self.stamina + self.recovery_stamina, self.max_stamina)#'''
 
             if self.defending == True:
                 self.defend(surface, target)
@@ -236,8 +254,9 @@ class Playable():
             self.attack_cooldown -= 1
 
         #update the fighter's position 
-        self.rect.x += dx
-        self.rect.y += dy
+        if self.action_cooldown == 0:
+            self.rect.x += dx
+            self.rect.y += dy
     #endregion
 
     #region Animation Updates 
@@ -343,12 +362,18 @@ class Playable():
     def attack(self, surface, target):
         if self.attack_cooldown == 0:
             self.attacking = True
-            attacking_rect = pygame.Rect(self.rect.centerx - (2 * self.rect.width * self.flip), self.rect.y, 2 * self.rect.width, self.rect.height)
+            attacking_rect = pygame.Rect(
+                self.rect.centerx - (2 * self.rect.width * self.flip), 
+                self.rect.y, 
+                2 * self.rect.width, 
+                self.rect.height
+            )
             
             # Checks for the attack block is hitting the defence block zone 
             if attacking_rect.colliderect(target.defending_rect):
                 print("Attack has been blocked")
                 self.knockback_function(5, target)
+                target.stamina -= 26
             
             # If not hotting the defence block but hitting the target
             elif attacking_rect.colliderect(target.rect):
@@ -379,10 +404,50 @@ class Playable():
             pygame.draw.rect(surface, (0, 255, 0), attacking_rect)
     #endregion 
 
+    #region attack(kick) function
+    def attack_heavy(self, surface, target):
+        if self.attack_cooldown == 0:
+            #self.attacking = True
+            heavyact_rect = pygame.Rect(
+                self.rect.centerx - (1.75 * self.rect.width * self.flip), 
+                self.rect.y, 
+                1.75 * self.rect.width, 
+                self.rect.height
+            )
+
+            # Checks for the attack block is hitting the defence block zone 
+            if heavyact_rect.colliderect(target.defending_rect):
+                self.knockback_function(8, target)
+                target.stamina -= 1000
+
+             # If not hotting the defence block but hitting the target
+            elif heavyact_rect.colliderect(target.rect):
+                if target.invincible:
+                    return
+
+                # if target is not defending 
+                if target.defending == False:
+                    target.health -= 20                                 # Subtracts 20 health
+                    target.hit = True                                   # turns on the state of being hit 
+                    target.stun_timer = pygame.time.get_ticks() + 500   # adds value to stun 
+                    target.action_cooldown = 45                         # adds value to action cooldown to prevent opponents from instant action 
+
+                    # Apply Knockback
+                    self.knockback_function(2, target)
+                else:
+                    target.health -= 2
+                    target.stamina -= 110
+
+                    # Apply Knockback
+                    self.knockback_function(5, target)
+
+            pygame.draw.rect(surface, (0, 255, 0), heavyact_rect)
+    #endregion 
+
     #region Defending Function 
     def defend(self, surface, target):
         self.defending_rect = pygame.Rect(
-            self.rect.centerx - (2.2 * self.rect.width * self.flip), # X-Position 
+            self.rect.centerx - (1.65 * self.rect.width * self.flip), # X-Position 
             self.rect.y,                                             # Y-Position 
             1.65 * self.rect.width,                                  # Width 
             self.rect.height                                         # Height 
